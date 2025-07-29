@@ -7,31 +7,10 @@ import io
 st.set_page_config(page_title="FAQ 分析アプリ", layout="wide")
 st.title("📊 よくあるご質問 分析アプリ")
 
-uploaded_file = st.file_uploader("📎 CSVファイルをアップロードしてください（Google Analyticsエクスポート形式）", type=["csv"])
-
-if uploaded_file:
-    # ファイル内容の生データを読み取り（文字列化）
-    raw_lines = uploaded_file.getvalue().decode("utf-8").splitlines()
-    
-    # ヘッダー行を自動検出（「ページパス + クエリ文字列」で始まる行）
-    header_row = None
-    for i, line in enumerate(raw_lines):
-        if line.startswith("ページパス + クエリ文字列"):
-            header_row = i
-            break
-    
-    # 検出できなかった場合はエラー
-    if header_row is None:
-        st.error("CSV内にヘッダー行（ページパス + クエリ文字列）が見つかりませんでした。")
-        st.stop()
-    
-    # 再読み込み前にファイルポインタを先頭に戻す
-    uploaded_file.seek(0)
-    
-    # 正しい行からDataFrameとして読み込み
-    df = pd.read_csv(uploaded_file, skiprows=header_row)
-
-    
+uploaded_file = st.file_uploader(
+    "📎 CSVファイルをアップロードしてください（Google Analyticsエクスポート形式）",
+    type=["csv"]
+)
 run_button = st.button("✅ 分析を実行")
 
 if run_button:
@@ -40,14 +19,33 @@ if run_button:
         st.stop()
 
     try:
-        # -------------------------------
-        # データ読み込み
-        # -------------------------------
-        df = pd.read_csv(uploaded_file, skiprows=8)  # 9行目から本データ開始
-        df.columns = [col.strip() for col in df.columns]  # ヘッダー整形
+        # --------------------------------------
+        # 1. ファイルのヘッダー行を自動検出して読み込む
+        # --------------------------------------
+        raw_text = uploaded_file.getvalue().decode("utf-8")
+        raw_lines = raw_text.splitlines()
 
-        # 必要列チェック
-        required_columns = ['ページパス + クエリ文字列', 'ページ タイトルとスクリーン クラス', 'セッション']
+        header_row = None
+        for i, line in enumerate(raw_lines):
+            if line.startswith("ページパス + クエリ文字列"):
+                header_row = i
+                break
+
+        if header_row is None:
+            st.error("CSV内にヘッダー行（ページパス + クエリ文字列）が見つかりませんでした。")
+            st.stop()
+
+        df = pd.read_csv(io.StringIO(raw_text), skiprows=header_row)
+        df.columns = [col.strip() for col in df.columns]
+
+        # --------------------------------------
+        # 必要列の存在チェック
+        # --------------------------------------
+        required_columns = [
+            'ページパス + クエリ文字列',
+            'ページ タイトルとスクリーン クラス',
+            'セッション'
+        ]
         if not all(col in df.columns for col in required_columns):
             st.error("必要な列がCSVに存在しません。Google Analyticsの形式を確認してください。")
             st.stop()
@@ -55,18 +53,19 @@ if run_button:
         df['ページパス + クエリ文字列'] = df['ページパス + クエリ文字列'].astype(str).apply(urllib.parse.unquote)
         df['ページ タイトルとスクリーン クラス'] = df['ページ タイトルとスクリーン クラス'].astype(str)
 
-        # -------------------------------
-        # 1. 詳細ページ（よくあるご質問以外）
-        # -------------------------------
+        # --------------------------------------
+        # 詳細ページ（よくあるご質問以外）
+        # --------------------------------------
         not_faq = df[~df['ページ タイトルとスクリーン クラス'].str.startswith('よくあるご質問', na=False)]
         faq_pattern = r'^/lowv/faq/\d+-\d+$'
         not_faq_filtered = not_faq[not_faq['ページパス + クエリ文字列'].str.match(faq_pattern, na=False)]
         not_faq_sorted = not_faq_filtered.sort_values('セッション', ascending=False)
-        not_faq_sorted['ページ タイトルとスクリーン クラス'] = not_faq_sorted['ページ タイトルとスクリーン クラス'].str.replace('｜Q.ENEST（キューエネス）でんき', '', regex=False)
+        not_faq_sorted['ページ タイトルとスクリーン クラス'] = not_faq_sorted['ページ タイトルとスクリーン クラス'].str.replace(
+            '｜Q.ENEST（キューエネス）でんき', '', regex=False)
 
-        # -------------------------------
-        # 2. カテゴリ別ランキング
-        # -------------------------------
+        # --------------------------------------
+        # カテゴリ別ランキング
+        # --------------------------------------
         cat_prefix = "/lowv/faq/result?category="
         cat_df = df[df['ページパス + クエリ文字列'].str.startswith(cat_prefix, na=False)].copy()
         cat_df['カテゴリ名'] = cat_df['ページパス + クエリ文字列'].str[len(cat_prefix):].apply(urllib.parse.unquote)
@@ -94,9 +93,9 @@ if run_button:
 
         cat_df_sorted = cat_df_grouped.sort_values('セッション', ascending=False)
 
-        # -------------------------------
-        # 3. キーワード別ランキング
-        # -------------------------------
+        # --------------------------------------
+        # キーワード別ランキング
+        # --------------------------------------
         kw_prefix = "/lowv/faq/result?keyword="
         kw_df = df[df['ページパス + クエリ文字列'].str.startswith(kw_prefix, na=False)].copy()
         kw_df['検索キーワード'] = kw_df['ページパス + クエリ文字列'].str[len(kw_prefix):].apply(urllib.parse.unquote)
@@ -124,9 +123,9 @@ if run_button:
 
         kw_df_sorted = kw_df_grouped.sort_values('セッション', ascending=False)
 
-        # -------------------------------
+        # --------------------------------------
         # 整形処理
-        # -------------------------------
+        # --------------------------------------
         def format_df(df, drop_title=False):
             if drop_title and 'ページ タイトルとスクリーン クラス' in df.columns:
                 df = df.drop(columns=['ページ タイトルとスクリーン クラス'])
@@ -144,9 +143,9 @@ if run_button:
         cat_df_sorted = format_df(cat_df_sorted, drop_title=True)
         kw_df_sorted = format_df(kw_df_sorted, drop_title=True)
 
-        # -------------------------------
+        # --------------------------------------
         # Excel出力（メモリ内）
-        # -------------------------------
+        # --------------------------------------
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             not_faq_sorted.to_excel(writer, sheet_name="詳細ページ", index=False)
