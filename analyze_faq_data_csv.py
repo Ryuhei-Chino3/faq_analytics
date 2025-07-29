@@ -36,17 +36,10 @@ def format_columns(df):
 
 if uploaded_file:
     try:
-        # 生テキスト読み込み
         raw_text = uploaded_file.getvalue().decode("utf-8")
         lines = raw_text.splitlines()
-
-        # 1～6行目削除、7行目(インデックス6)をヘッダーに、8行目(インデックス7)削除
         processed_lines = [lines[6]] + lines[8:]
-
-        # DataFrame化
         df = pd.read_csv(io.StringIO("\n".join(processed_lines)))
-        
-        # A列をURLデコード
         col_0 = df.columns[0]
         df[col_0] = df[col_0].astype(str).apply(decode_url_component)
 
@@ -113,8 +106,7 @@ if uploaded_file:
 
         kw_df_sorted = kw_df_grouped.sort_values('セッション', ascending=False)
 
-        # 指定列削除（not_faqのみ）
-        not_faq_sorted = remove_columns(not_faq_sorted)
+        # ※詳細ページは列削除しないのでremove_columnsは使わない
 
         # 詳細ページシートのA列：ページパス + クエリ文字列、B列：ページ タイトルとスクリーン クラスを確実に表示
         cols = list(not_faq_sorted.columns)
