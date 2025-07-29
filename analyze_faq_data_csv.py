@@ -10,9 +10,19 @@ st.title("📊 よくあるご質問 分析アプリ")
 uploaded_file = st.file_uploader("📎 CSVファイルをアップロードしてください（Google Analyticsエクスポート形式）", type=["csv"])
 
 if uploaded_file:
-    df_preview = pd.read_csv(uploaded_file, skiprows=8)  # または skiprows=6 など適宜変更
-    st.write("読み込んだ列名一覧:", df_preview.columns.tolist())
-
+    # 一時的に全行読み込む
+    raw_lines = uploaded_file.getvalue().decode("utf-8").splitlines()
+    
+    # ヘッダー行を探す（"ページパス"で始まる行）
+    for i, line in enumerate(raw_lines):
+        if line.startswith("ページパス + クエリ文字列"):
+            header_row = i
+            break
+    
+    # ヘッダー行から読み込む
+    uploaded_file.seek(0)  # 読み込み位置を先頭に戻す
+    df = pd.read_csv(uploaded_file, skiprows=header_row)
+    
 run_button = st.button("✅ 分析を実行")
 
 if run_button:
