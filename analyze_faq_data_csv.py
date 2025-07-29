@@ -8,6 +8,11 @@ st.set_page_config(page_title="FAQ 分析アプリ", layout="wide")
 st.title("📊 よくあるご質問 分析アプリ")
 
 uploaded_file = st.file_uploader("📎 CSVファイルをアップロードしてください（Google Analyticsエクスポート形式）", type=["csv"])
+
+if uploaded_file:
+    df_preview = pd.read_csv(uploaded_file, skiprows=8)  # または skiprows=6 など適宜変更
+    st.write("読み込んだ列名一覧:", df_preview.columns.tolist())
+
 run_button = st.button("✅ 分析を実行")
 
 if run_button:
