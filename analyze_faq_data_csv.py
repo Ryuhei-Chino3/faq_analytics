@@ -35,21 +35,21 @@ def format_columns(df):
     return df
 
 if uploaded_file:
-    # 生テキスト読み込み
-    raw_text = uploaded_file.getvalue().decode("utf-8")
-    lines = raw_text.splitlines()
-
-    # 1～6行目削除、7行目(インデックス6)をヘッダーに、8行目(インデックス7)削除
-    processed_lines = [lines[6]] + lines[8:]
-
-    # DataFrame化
-    df = pd.read_csv(io.StringIO("\n".join(processed_lines)))
-    
-    # A列をURLデコード
-    col_0 = df.columns[0]
-    df[col_0] = df[col_0].astype(str).apply(decode_url_component)
-
     try:
+        # 生テキスト読み込み
+        raw_text = uploaded_file.getvalue().decode("utf-8")
+        lines = raw_text.splitlines()
+
+        # 1～6行目削除、7行目(インデックス6)をヘッダーに、8行目(インデックス7)削除
+        processed_lines = [lines[6]] + lines[8:]
+
+        # DataFrame化
+        df = pd.read_csv(io.StringIO("\n".join(processed_lines)))
+        
+        # A列をURLデコード
+        col_0 = df.columns[0]
+        df[col_0] = df[col_0].astype(str).apply(decode_url_component)
+
         # 1. 「よくあるご質問」で始まらないレコードのセッション数ランキング
         not_faq = df[~df['ページ タイトルとスクリーン クラス'].astype(str).str.startswith('よくあるご質問', na=False)]
         faq_pattern = r'^/lowv/faq/\d+-\d+$'
@@ -115,6 +115,14 @@ if uploaded_file:
 
         # 指定列削除（not_faqのみ）
         not_faq_sorted = remove_columns(not_faq_sorted)
+
+        # 詳細ページシートのA列：ページパス + クエリ文字列、B列：ページ タイトルとスクリーン クラスを確実に表示
+        cols = list(not_faq_sorted.columns)
+        if 'ページパス + クエリ文字列' in cols and 'ページ タイトルとスクリーン クラス' in cols:
+            others = [c for c in cols if c not in ['ページパス + クエリ文字列', 'ページ タイトルとスクリーン クラス']]
+            not_faq_sorted = not_faq_sorted[['ページパス + クエリ文字列', 'ページ タイトルとスクリーン クラス'] + others]
+        else:
+            st.warning("詳細ページに必要な列がありません。")
 
         # カテゴリ・キーワードはページタイトル列を削除
         cat_df_sorted = cat_df_sorted.drop(columns=['ページ タイトルとスクリーン クラス'], errors='ignore')
