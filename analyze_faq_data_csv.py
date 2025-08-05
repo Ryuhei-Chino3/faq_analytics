@@ -19,7 +19,7 @@ def decode_column(df, col_name):
     return df
 
 def extract_query_param(value, param):
-    if pd.isna(value):
+    if pd.isna(value) or value == "":
         return ""
     try:
         parsed = urllib.parse.urlparse(value)
@@ -43,12 +43,6 @@ def load_csv_with_header_adjustment(uploaded_file):
         df = pd.read_csv(uploaded_file, skiprows=6, dtype=str)
     return df
 
-def clean_filename_base(fname):
-    # 拡張子と日付レンジ（_YYYYMMDD_YYYYMMDD）を削除
-    name = re.sub(r'\.csv$', '', fname, flags=re.IGNORECASE)
-    name = re.sub(r'_(\d{8}_\d{8})$', '', name)
-    return name
-
 def process_report(file, report_type):
     df = load_csv_with_header_adjustment(file)
     if df.empty:
@@ -60,32 +54,50 @@ def process_report(file, report_type):
     faq_pattern = re.compile(r'^/lowv/faq/\d+-\d+$')
 
     if report_type == "report1":
-        # ページパス + クエリ文字列 をデコード
+        # 共通：ページパス+クエリをデコード
         if "ページパス + クエリ文字列" in df.columns:
             df = decode_column(df, "ページパス + クエリ文字列")
-            # detail: /lowv/faq/X-X のみ抽出
+
+        # 詳細ページ1：/lowv/faq/X-X だけ
+        if "ページパス + クエリ文字列" in df.columns:
             detail_df = df[df["ページパス + クエリ文字列"].astype(str).str.match(faq_pattern, na=False)].copy()
-            # カテゴリ／キーワードを付与（C,D）
+            # カテゴリ/キーワード列を追加（report1ではC,D）
             detail_df["カテゴリ"] = detail_df["ページパス + クエリ文字列"].apply(lambda u: extract_query_param(u, "category"))
             detail_df["キーワード"] = detail_df["ページパス + クエリ文字列"].apply(lambda u: extract_query_param(u, "keyword"))
-            sheets["詳細ページ"] = detail_df
+            sheets["詳細ページ1"] = detail_df
+
+            # カテゴリ1 シート：カテゴリ非空
+            cat_df = detail_df[detail_df["カテゴリ"].astype(str) != ""].copy()
+            sheets["カテゴリ1"] = cat_df
+
+            # キーワード1 シート：キーワード非空
+            kw_df = detail_df[detail_df["キーワード"].astype(str) != ""].copy()
+            sheets["キーワード1"] = kw_df
 
     elif report_type == "report2":
         # B列（ページパス + クエリ文字列）をデコード
         if "ページパス + クエリ文字列" in df.columns:
             df = decode_column(df, "ページパス + クエリ文字列")
-            # 詳細ページは /lowv/faq/X-X のみを出す（カテゴリ/キーワード追加しない）
-            detail_df = df[df["ページパス + クエリ文字列"].astype(str).str.match(faq_pattern, na=False)].copy()
-            sheets["詳細ページ"] = detail_df
 
-            # カテゴリシート（カテゴリがある行、元の列構成を維持）
-            tmp = df.copy()
-            tmp["カテゴリ"] = tmp["ページパス + クエリ文字列"].apply(lambda u: extract_query_param(u, "category"))
-            tmp["キーワード"] = tmp["ページパス + クエリ文字列"].apply(lambda u: extract_query_param(u, "keyword"))
-            cat_sheet = tmp[tmp["カテゴリ"].astype(str) != ""].copy()
-            kw_sheet = tmp[tmp["キーワード"].astype(str) != ""].copy()
-            sheets["カテゴリ"] = cat_sheet
-            sheets["キーワード"] = kw_sheet
+        # C列「ページの参照元 URL」もあればデコード（全シート共通で）
+        if "ページの参照元 URL" in df.columns:
+            df = decode_column(df, "ページの参照元 URL")
+
+        # 詳細ページ2：/lowv/faq/X-X のみ（カテゴリ/キーワード列なし）
+        if "ページパス + クエリ文字列" in df.columns:
+            detail_df = df[df["ページパス + クエリ文字列"].astype(str).str.match(faq_pattern, na=False)].copy()
+            sheets["詳細ページ2"] = detail_df
+
+            # カテゴリ2：カテゴリ付き（元の列構成維持）
+            tmp_cat = df.copy()
+            tmp_cat["カテゴリ"] = tmp_cat["ページパス + クエリ文字列"].apply(lambda u: extract_query_param(u, "category"))
+            tmp_cat["キーワード"] = tmp_cat["ページパス + クエリ文字列"].apply(lambda u: extract_query_param(u, "keyword"))
+            cat_sheet = tmp_cat[tmp_cat["カテゴリ"].astype(str) != ""].copy()
+            sheets["カテゴリ2"] = cat_sheet
+
+            # キーワード2
+            kw_sheet = tmp_cat[tmp_cat["キーワード"].astype(str) != ""].copy()
+            sheets["キーワード2"] = kw_sheet
 
     elif report_type == "report4":
         url_col = "ページの参照元 URL"
@@ -123,16 +135,15 @@ if uploaded_files:
                 continue
 
             sheets = process_report(file, report_type)
-            base = clean_filename_base(fname)
             for sheet_name, df in sheets.items():
-                safe_name = f"{sheet_name}"
-                # 複数ファイルのときシート名衝突を防ぐ（同名ファイル複数ならインデックス付与）
+                # シート名衝突回避
+                safe_name = sheet_name[:31]
                 candidate = safe_name
                 suffix = 1
-                while candidate[:31] in writer.sheets:
+                while candidate in writer.sheets:
                     suffix += 1
-                    candidate = f"{safe_name}_{suffix}"
-                df.to_excel(writer, sheet_name=candidate[:31], index=False)
+                    candidate = f"{safe_name}_{suffix}"[:31]
+                df.to_excel(writer, sheet_name=candidate, index=False)
 
     output.seek(0)
     st.download_button(
